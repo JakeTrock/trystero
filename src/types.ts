@@ -1,4 +1,7 @@
-type Metadata =
+import { FirebaseApp } from "firebase/app";
+import { Instance } from "simple-peer";
+
+export type Metadata =
   | null
   | string
   | number
@@ -7,25 +10,42 @@ type Metadata =
   | Metadata[]
   | { [key: string]: Metadata };
 
-type TargetPeers = string | string[] | null;
-
 export interface BaseRoomConfig {
   appId: string;
   password?: string;
   rtcConfig?: RTCConfiguration;
 }
 
-export interface ActionSender<T> {
-  (
-    data: T,
-    targetPeers?: TargetPeers,
-    metadata?: Metadata,
-    progress?: (percent: number, peerId: string) => void
-  ): Promise<Array<undefined>>;
+export interface IpfsRoomConfig extends BaseRoomConfig {
+  swarmAddresses?: string[];
 }
 
-export interface ActionReceiver<T> {
-  (receiver: (data: T, peerId: string, metadata?: Metadata) => void): void;
+export interface FirebaseRoomConfig extends BaseRoomConfig {
+  appId: string;
+  firebaseApp?: FirebaseApp;
+  rootPath?: string;
+}
+
+export interface TorrentRoomConfig extends BaseRoomConfig {
+  trackerUrls?: string[];
+  trackerRedundancy?: number;
+}
+
+export type TargetPeers = string | string[] | undefined;
+
+export interface ActionSender {
+  //TODO: change to use <T> for data type
+  (
+    data: any,
+    targetPeers?: TargetPeers,
+    metadata?: Metadata,
+    progress?: (percent: number, peerId: string, metadata?: Metadata) => void
+  ): Promise<Array<any>>;
+}
+
+export interface ActionReceiver {
+  //TODO: change to use <T> for data type
+  (receiver: (data: any, peerId: string, metadata?: Metadata) => void): void;
 }
 
 export interface ActionProgress {
@@ -38,10 +58,13 @@ export interface ActionProgress {
   ): void;
 }
 
+export type MakeAction = (
+  //TODO: change to use <T> for snd/rec
+  namespace: string
+) => [ActionSender, ActionReceiver, ActionProgress];
+
 export interface Room {
-  makeAction: <T>(
-    namespace: string
-  ) => [ActionSender<T>, ActionReceiver<T>, ActionProgress];
+  makeAction: MakeAction;
 
   ping: (id: string) => Promise<number>;
 
@@ -74,7 +97,8 @@ export interface Room {
     oldTrack: MediaStreamTrack,
     newTrack: MediaStreamTrack,
     stream: MediaStream,
-    targetPeers?: TargetPeers
+    targetPeers?: TargetPeers,
+    meta?: Metadata
   ) => Promise<void>[];
 
   onPeerJoin: (fn: (peerId: string) => void) => void;
@@ -88,4 +112,11 @@ export interface Room {
   onPeerTrack: (
     fn: (track: MediaStreamTrack, stream: MediaStream, peerId: string) => void
   ) => void;
+}
+
+export interface ExtendedInstance extends Instance {
+  __earlyDataBuffer: any;
+  _channel: RTCDataChannel;
+  __drainEarlyData: (onData: (data: any) => void) => void;
+  _pc: RTCPeerConnection;
 }

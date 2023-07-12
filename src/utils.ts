@@ -1,9 +1,6 @@
 /* eslint-disable no-underscore-dangle */
-import { SimplePeer } from "simple-peer";
-import Peer from "simple-peer-light";
-import { IpfsRoomConfig } from "./ipfs";
-import { TorrentRoomConfig } from "./torrent";
-import { BaseRoomConfig, Room } from "./types";
+import Peer from "simple-peer-light"; //TODO: maybe later switch back to simple-peer-light
+import { ExtendedInstance, Room } from "./types";
 
 const charSet =
   "0123456789AaBbCcDdEeFfGgHhIiJjKkLlMmNnOoPpQqRrSsTtUuVvWwXxYyZz";
@@ -23,7 +20,11 @@ export const initPeer = (
   trickle: boolean,
   config: RTCConfiguration | undefined
 ) => {
-  const peer: SimplePeer = new Peer({ initiator, trickle, config });
+  const peer: ExtendedInstance = new Peer({
+    initiator,
+    trickle,
+    config,
+  }) as ExtendedInstance;
   const onData = (data: any) => peer.__earlyDataBuffer.push(data); //TODO: resolve when network works
 
   peer.on(events.data, onData);
@@ -32,7 +33,7 @@ export const initPeer = (
     peer.off(events.data, onData);
     peer.__earlyDataBuffer.forEach(f);
     delete peer.__earlyDataBuffer;
-    delete peer.__drainEarlyData;
+    peer.__drainEarlyData = noOp;
   };
 
   return peer;
@@ -49,15 +50,12 @@ export const mkErr = (msg: string) => new Error(`${libName}: ${msg}`);
 export const initGuard =
   (
     occupiedRooms: { [x: string]: any },
-    f: {
-      (config: any, ns: string): Room;
-      (config: any, ns: string): Promise<string[]>;
-      (config: BaseRoomConfig & TorrentRoomConfig, ns: string): Room;
-      (config: BaseRoomConfig & IpfsRoomConfig, ns: string): Room;
-      (arg0: any, arg1: any): any;
-    }
+    f: (config: any, ns: string | number) => Promise<Room | string[]>
   ) =>
-  (config: { appId: any; firebaseApp: any }, ns: string | number) => {
+  async (
+    config: { appId: any; firebaseApp: any },
+    ns: string | number
+  ): Promise<Room | string[]> => {
     if (occupiedRooms[ns]) {
       throw mkErr(`already joined room ${ns}`);
     }
@@ -74,7 +72,7 @@ export const initGuard =
       throw mkErr("namespace argument required");
     }
 
-    return f(config, ns);
+    return await f(config, ns);
   };
 
 export const selfId = genId(20);
