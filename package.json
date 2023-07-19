@@ -25,7 +25,7 @@
   "dependencies": {
     "firebase": "^9.6.5",
     "ipfs-core": "0.9.0",
-    "kyber-crystals": "^1.0.6",
+    "native-file-system-adapter": "^3.0.0",
     "simple-peer": "^9.11.1",
     "simple-peer-light": "^9.10.0"
   },

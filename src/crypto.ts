@@ -1,6 +1,7 @@
 import { decodeBytes, encodeBytes } from "./utils.js";
 
-const algo = "AES-GCM"; //TODO: change this to AES-GCM
+const algo = "AES-GCM";
+const IV_LENGTH = 16;
 
 const pack = (buff: ArrayBufferLike) =>
   btoa(String.fromCharCode(...new Uint8Array(buff)));
@@ -27,7 +28,7 @@ export const encrypt = async (
   keyP: CryptoKey | PromiseLike<CryptoKey>,
   plaintext: string
 ) => {
-  const iv = crypto.getRandomValues(new Uint8Array(16));
+  const iv = crypto.getRandomValues(new Uint8Array(IV_LENGTH));
 
   return JSON.stringify({
     c: pack(
@@ -55,26 +56,3 @@ export const decrypt = async (
     )
   );
 };
-
-// import {kyber} from 'kyber-crystals';
-
-// const generateKyberKeyPair /*: {privateKey: Uint8Array; publicKey: Uint8Array} */ =
-// 	await kyber.keyPair()
-// ;
-
-// const {cyphertext, secret} /*: {cyphertext: Uint8Array; secret: Uint8Array} */ =
-// 	await kyber.encrypt(keyPair.publicKey)
-// ;
-
-// const decrypted /*: Uint8Array */ =
-// 	await kyber.decrypt(cyphertext, keyPair.privateKey) // same as secret
-// ;
-
-//* flow description
-// 1. bob send alice public key
-//     - sendAlice(kyber.keyPair().publicKey)
-// 2. alice generate cyphertext/shared secret from bob's public key
-//     - const {cyphertext, secret} = encrypt(bobPublicKey)
-//     - sendBob(cyphertext)
-// 3. bob take cypertext and generate the same shared secret
-//     - const secret = decrypt(aliceCyphertext)

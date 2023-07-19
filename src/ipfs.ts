@@ -191,7 +191,8 @@ export const joinRoom = initGuard(
             node.pubsub.unsubscribe(selfTopic, (m) => console.log(m));
             clearInterval(announceInterval);
             clearTimeout(swarmPollTimeout);
-          }
+          },
+          config.encryptDecrypt
         )
       );
     })

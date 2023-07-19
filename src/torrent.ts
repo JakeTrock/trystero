@@ -336,7 +336,8 @@ export const joinRoom = initGuard(
             delete occupiedRooms[ns];
             clearInterval(announceInterval);
             cleanPool();
-          }
+          },
+          config.encryptDecrypt
         )
       );
     })

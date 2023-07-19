@@ -1,5 +1,10 @@
 /* eslint-disable no-underscore-dangle */
 import Peer from "simple-peer-light"; //TODO: maybe later switch back to simple-peer-light
+import {
+  FirebaseRoomConfig,
+  IpfsRoomConfig,
+  TorrentRoomConfig,
+} from "trystero";
 import { ExtendedInstance, Room } from "./types";
 
 const charSet =
@@ -50,12 +55,12 @@ export const mkErr = (msg: string) => new Error(`${libName}: ${msg}`);
 export const initGuard =
   (
     occupiedRooms: { [x: string]: any },
-    f: (config: any, ns: string | number) => Promise<Room | string[]>
+    f: (config: any, ns: string | number) => Promise<Room>
   ) =>
   async (
-    config: { appId: any; firebaseApp: any },
+    config: TorrentRoomConfig | IpfsRoomConfig | FirebaseRoomConfig,
     ns: string | number
-  ): Promise<Room | string[]> => {
+  ): Promise<Room> => {
     if (occupiedRooms[ns]) {
       throw mkErr(`already joined room ${ns}`);
     }
@@ -64,12 +69,40 @@ export const initGuard =
       throw mkErr("requires a config map as the first argument");
     }
 
-    if (!config.appId && !config.firebaseApp) {
-      throw mkErr("config map is missing appId field");
+    if (!ns) {
+      throw mkErr("namespace argument required");
+    }
+
+    // if (!config.appId) {
+    //   throw mkErr("config map is missing appId field");
+    // }
+
+    return await f(config, ns);
+  };
+
+export const firebaseGuard =
+  (
+    occupiedRooms: { [x: string]: any },
+    f: (config: any, ns: string | number) => Promise<string[]>
+  ) =>
+  async (
+    config: FirebaseRoomConfig,
+    ns: string | number
+  ): Promise<string[]> => {
+    if (occupiedRooms[ns]) {
+      throw mkErr(`already joined room ${ns}`);
+    }
+
+    if (!config) {
+      throw mkErr("requires a config map as the first argument");
     }
 
     if (!ns) {
       throw mkErr("namespace argument required");
+    }
+
+    if (!config.appId) {
+      throw mkErr("config map is missing appId field");
     }
 
     return await f(config, ns);

@@ -14,6 +14,11 @@ export interface BaseRoomConfig {
   appId: string;
   password?: string;
   rtcConfig?: RTCConfiguration;
+  encryptDecrypt?: {
+    encrypt: (toId: string, data: Uint8Array) => Promise<Uint8Array>;
+    decrypt: (fromId: string, data: Uint8Array) => Promise<Uint8Array>;
+    IV_LENGTH: number;
+  };
 }
 
 export interface IpfsRoomConfig extends BaseRoomConfig {

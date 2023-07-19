@@ -1,4 +1,4 @@
-import { kyber } from "kyber-crystals";
+import { showSaveFilePicker } from "native-file-system-adapter";
 import { SignalData } from "simple-peer";
 import {
   ActionSender,
@@ -6,6 +6,7 @@ import {
   MakeAction,
   Metadata,
   Room,
+  TargetPeers,
 } from "./types.js";
 import {
   combineChunks,
@@ -33,7 +34,12 @@ const buffLowEvent = "bufferedamountlow";
 
 export default async (
   onPeer: (joinHook: (peer: ExtendedInstance, id: string) => void) => void,
-  onSelfLeave: () => void
+  onSelfLeave: () => void,
+  encryptDecrypt?: {
+    encrypt: (toId: string, data: Uint8Array) => Promise<Uint8Array>;
+    decrypt: (fromId: string, data: Uint8Array) => Promise<Uint8Array>;
+    IV_LENGTH: number;
+  }
 ): Promise<Room> => {
   const peerMap: { [s: string]: ExtendedInstance } = {};
   const actions: {
@@ -52,7 +58,6 @@ export default async (
   const pendingPongs: { [x: string]: (value?: unknown) => void } = {};
   const pendingStreamMetas: { [x: string]: any } = {};
   const pendingTrackMetas: { [x: string]: any } = {};
-  const quantumKey = await kyber.keyPair(); //TODO: quantenc
 
   const iterate = (
     targets: string[] | string,
@@ -131,6 +136,7 @@ export default async (
       }
 
       const isJson = typeof data !== "string";
+      const isFile = data instanceof File;
       const isBlob = data instanceof Blob;
       const isBinary =
         isBlob || data instanceof ArrayBuffer || data instanceof TypedArray;
@@ -139,16 +145,24 @@ export default async (
         throw mkErr("action meta argument can only be used with binary data");
       }
 
-      const buffer = isBinary
-        ? new Uint8Array(isBlob ? await data.arrayBuffer() : data)
-        : encodeBytes(isJson ? JSON.stringify(data) : data);
+      const buffer = await (async () => {
+        if (isFile) {
+          return encodeBytes(""); //we do not want to buffer the file, it is too large
+        } else if (isBinary) {
+          return new Uint8Array(isBlob ? await data.arrayBuffer() : data);
+        } else {
+          return encodeBytes(isJson ? JSON.stringify(data) : data);
+        }
+      })();
 
       const chunkTotal =
-        Math.ceil(buffer.byteLength / chunkSize) + (meta ? 1 : 0);
+        (isFile
+          ? Math.ceil(data.size / chunkSize)
+          : Math.ceil(buffer.byteLength / chunkSize)) + (meta ? 1 : 0);
 
-      const chunks = new Array(chunkTotal)
-        .fill(new Uint8Array(chunkSize))
-        .map((_, i) => {
+      const chunks =
+        !isFile &&
+        new Array(chunkTotal).fill(new Uint8Array(chunkSize)).map((_, i) => {
           const isLast = i === chunkTotal - 1;
           const isMeta = meta && i === 0;
           const metaEncoded = encodeBytes(JSON.stringify(meta));
@@ -158,14 +172,25 @@ export default async (
                 ? metaEncoded.byteLength
                 : isLast
                 ? buffer.byteLength - chunkSize * (chunkTotal - (meta ? 2 : 1))
-                : chunkSize)
+                : chunkSize) +
+              (encryptDecrypt ? encryptDecrypt.IV_LENGTH : 0)
           );
 
           chunk.set(typeBytes);
           chunk.set([nonce], nonceIndex);
           chunk.set(
-            //@ts-ignore
-            [isLast | (isMeta << 1) | (isBinary << 2) | (isJson << 3)],
+            [
+              //@ts-ignore
+              isLast |
+                //@ts-ignore
+                (isMeta << 1) |
+                //@ts-ignore
+                (isBinary << 2) |
+                //@ts-ignore
+                (isJson << 3) |
+                //@ts-ignore
+                (isFile << 4),
+            ],
             tagIndex
           );
           chunk.set(
@@ -184,6 +209,69 @@ export default async (
           return new Uint8Array(chunk);
         });
 
+      const getFileChunk = (chunkN: number) =>
+        new Promise<Uint8Array>((res) => {
+          const reader = new FileReader();
+          const isLast = chunkN === chunkTotal - 1;
+          const isMeta = meta && chunkN === 0;
+          const metaEncoded = encodeBytes(JSON.stringify(meta));
+
+          reader.onload = () => {
+            const chunk = new Uint8Array(
+              payloadIndex +
+                (isMeta
+                  ? metaEncoded.byteLength
+                  : isLast
+                  ? data.size - chunkSize * (chunkTotal - (meta ? 2 : 1))
+                  : chunkSize) +
+                (encryptDecrypt ? encryptDecrypt.IV_LENGTH : 0)
+            );
+
+            chunk.set(typeBytes);
+            chunk.set([nonce], nonceIndex);
+            chunk.set(
+              [
+                //@ts-ignore
+                isLast |
+                  //@ts-ignore
+                  (isMeta << 1) |
+                  //@ts-ignore
+                  (isBinary << 2) |
+                  //@ts-ignore
+                  (isJson << 3) |
+                  //@ts-ignore
+                  (isFile << 4),
+              ],
+              tagIndex
+            );
+            chunk.set(
+              [Math.round(((chunkN + 1) / chunkTotal) * oneByteMax)],
+              progressIndex
+            );
+            chunk.set(
+              meta && isMeta
+                ? metaEncoded
+                : new Uint8Array(reader.result as ArrayBuffer),
+              payloadIndex
+            );
+            res(chunk);
+          };
+
+          reader.readAsArrayBuffer(
+            meta
+              ? data.slice((chunkN - 1) * chunkSize, chunkN * chunkSize)
+              : data.slice(chunkN * chunkSize, (chunkN + 1) * chunkSize)
+          );
+
+          reader.onerror = () => {
+            throw mkErr("error reading file");
+          };
+
+          reader.onabort = () => {
+            throw mkErr("file read aborted");
+          };
+        });
+
       nonce = (nonce + 1) & oneByteMax;
 
       return Promise.all(
@@ -192,7 +280,7 @@ export default async (
           let chunkN = 0;
 
           while (chunkN < chunkTotal) {
-            const chunk = chunks[chunkN];
+            const chunk = !chunks ? await getFileChunk(chunkN) : chunks[chunkN];
 
             if (chan.bufferedAmount > chan.bufferedAmountLowThreshold) {
               await new Promise<void>((res) => {
@@ -209,7 +297,22 @@ export default async (
               break;
             }
 
-            peer.send(chunk);
+            if (encryptDecrypt) {
+              const encChunk = await encryptDecrypt.encrypt(
+                id,
+                chunk.subarray(
+                  payloadIndex,
+                  chunk.byteLength - encryptDecrypt.IV_LENGTH
+                )
+              );
+              console.log("enc", encChunk, decodeBytes(encChunk));
+              console.log("lenComp", encChunk.length, chunk.length);
+              chunk.set(encChunk, payloadIndex);
+              peer.send(chunk);
+            } else {
+              console.log("no enc", chunk, decodeBytes(chunk));
+              peer.send(chunk);
+            }
             chunkN++;
 
             if (onProgress) {
@@ -223,6 +326,7 @@ export default async (
     return [
       actionSender,
 
+      // functions are passed in and "registered" based on their type
       (onComplete: (data: any, peerId: string, metadata?: Metadata) => void) =>
         (actions[typePadded] = { ...actions[typePadded], onComplete }),
 
@@ -236,17 +340,27 @@ export default async (
     ];
   };
 
-  const handleData = (id: string, data: any) => {
+  const handleData = async (id: string, data: any) => {
     const buffer = new Uint8Array(data);
     const type = decodeBytes(buffer.subarray(typeIndex, nonceIndex));
     const [nonce] = buffer.subarray(nonceIndex, tagIndex);
     const [tag] = buffer.subarray(tagIndex, progressIndex);
     const [progress] = buffer.subarray(progressIndex, payloadIndex);
-    const payload = buffer.subarray(payloadIndex);
+    const payload = await (async () => {
+      const payloadRaw = buffer.subarray(payloadIndex);
+      console.log("payloadRaw", payloadRaw);
+      if (encryptDecrypt) {
+        const dec = await encryptDecrypt.decrypt(id, payloadRaw);
+        return dec;
+      } else {
+        return payloadRaw;
+      }
+    })();
     const isLast = !!(tag & 1);
     const isMeta = !!(tag & (1 << 1));
     const isBinary = !!(tag & (1 << 2));
     const isJson = !!(tag & (1 << 3));
+    const isFile = !!(tag & (1 << 4));
 
     if (!actions[type]) {
       throw mkErr(`received message with unregistered type (${type})`);
@@ -263,13 +377,30 @@ export default async (
     let target = pendingTransmissions[id][type][nonce];
 
     if (!target) {
-      target = pendingTransmissions[id][type][nonce] = { chunks: [] };
+      if (isFile) {
+        const fileHandle = await showSaveFilePicker({
+          //TODO: keeps opening, FIX
+          _preferPolyfill: false,
+          excludeAcceptAllOption: false, // default
+        });
+
+        const fileWriter = await fileHandle.createWritable();
+
+        target = pendingTransmissions[id][type][nonce] = { fileWriter };
+        console.log(target);
+      } else {
+        target = pendingTransmissions[id][type][nonce] = { chunks: [] };
+      }
     }
 
     if (isMeta) {
       target.meta = JSON.parse(decodeBytes(payload));
     } else {
-      target.chunks.push(payload);
+      if (isFile) {
+        await target.fileWriter.write(payload);
+      } else {
+        target.chunks.push(payload);
+      }
     }
 
     actions[type].onProgress(progress / oneByteMax, id, target.meta);
@@ -278,15 +409,19 @@ export default async (
       return;
     }
 
-    const full = combineChunks(target.chunks);
-
-    if (isBinary) {
-      actions[type].onComplete(full, id, target.meta);
+    if (isFile) {
+      await target.fileWriter.close();
+      actions[type].onComplete({ success: true }, id, target.meta);
     } else {
-      const text = decodeBytes(full);
-      actions[type].onComplete(isJson ? JSON.parse(text) : text, id);
-    }
+      const full = combineChunks(target.chunks);
 
+      if (isBinary) {
+        actions[type].onComplete(full, id, target.meta);
+      } else {
+        const text = decodeBytes(full);
+        actions[type].onComplete(isJson ? JSON.parse(text) : text, id);
+      }
+    }
     delete pendingTransmissions[id][type][nonce];
   };
 
@@ -380,7 +515,7 @@ export default async (
     getPeers: () =>
       fromEntries(entries(peerMap).map(([id, peer]) => [id, peer._pc])),
 
-    addStream: (stream, targets, meta) =>
+    addStream: (stream: MediaStream, targets: TargetPeers, meta: Metadata) =>
       targets
         ? iterate(targets, async (id, peer) => {
             if (meta) {
@@ -391,7 +526,7 @@ export default async (
           })
         : [],
 
-    removeStream: (stream, targets) =>
+    removeStream: (stream: MediaStream, targets: TargetPeers) =>
       targets &&
       iterate(
         targets,
@@ -402,7 +537,12 @@ export default async (
           })
       ),
 
-    addTrack: (track, stream, targets, meta) =>
+    addTrack: (
+      track: MediaStreamTrack,
+      stream: MediaStream,
+      targets: TargetPeers,
+      meta: Metadata
+    ) =>
       targets
         ? iterate(targets, async (id, peer) => {
             if (meta) {
@@ -413,7 +553,11 @@ export default async (
           })
         : [],
 
-    removeTrack: (track, stream, targets) =>
+    removeTrack: (
+      track: MediaStreamTrack,
+      stream: MediaStream,
+      targets: TargetPeers
+    ) =>
       targets &&
       iterate(
         targets,
@@ -423,8 +567,13 @@ export default async (
             res();
           })
       ),
-
-    replaceTrack: (oldTrack, newTrack, stream, targets, meta) =>
+    replaceTrack: (
+      oldTrack: MediaStreamTrack,
+      newTrack: MediaStreamTrack,
+      stream: MediaStream,
+      targets: TargetPeers,
+      meta: Metadata
+    ) =>
       targets
         ? iterate(targets, async (id, peer) => {
             if (meta) {

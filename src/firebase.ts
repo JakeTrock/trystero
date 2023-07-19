@@ -15,14 +15,10 @@ import {
 } from "firebase/database";
 import { decrypt, encrypt, genKey } from "./crypto";
 import room from "./room";
-import {
-  BaseRoomConfig,
-  ExtendedInstance,
-  FirebaseRoomConfig,
-  Room,
-} from "./types";
+import { ExtendedInstance, FirebaseRoomConfig, Room } from "./types";
 import {
   events,
+  firebaseGuard,
   initGuard,
   initPeer,
   keys,
@@ -65,7 +61,7 @@ const init = (config: FirebaseRoomConfig): Database => {
 
 export const joinRoom = initGuard(
   occupiedRooms,
-  (config: BaseRoomConfig & FirebaseRoomConfig, ns: string | number) =>
+  (config: FirebaseRoomConfig, ns: string | number) =>
     new Promise<Room>(async (resolve, reject) => {
       const db = init(config);
       if (!db) reject();
@@ -184,13 +180,14 @@ export const joinRoom = initGuard(
             off(roomRef);
             unsubFns.forEach((f) => f());
             delete occupiedRooms[ns];
-          }
+          },
+          config.encryptDecrypt
         )
       );
     })
 );
 
-export const getOccupants = initGuard(
+export const getOccupants = firebaseGuard(
   occupiedRooms,
   (config: FirebaseRoomConfig, ns: string | number): Promise<string[]> =>
     new Promise((res) =>
