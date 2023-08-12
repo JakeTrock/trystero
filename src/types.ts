@@ -17,6 +17,7 @@ export interface BaseRoomConfig {
   encryptDecrypt?: {
     encrypt: (toId: string, data: Uint8Array) => Promise<Uint8Array>;
     decrypt: (fromId: string, data: Uint8Array) => Promise<Uint8Array>;
+    hasKey: (id: string) => boolean;
     IV_LENGTH: number;
   };
 }

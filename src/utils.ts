@@ -1,5 +1,5 @@
 /* eslint-disable no-underscore-dangle */
-import Peer from "simple-peer-light"; //TODO: maybe later switch back to simple-peer-light
+import Peer from "simple-peer-light";
 import {
   FirebaseRoomConfig,
   IpfsRoomConfig,
@@ -30,7 +30,7 @@ export const initPeer = (
     trickle,
     config,
   }) as ExtendedInstance;
-  const onData = (data: any) => peer.__earlyDataBuffer.push(data); //TODO: resolve when network works
+  const onData = (data: any) => peer.__earlyDataBuffer.push(data); //TODO: find a more standard way to do this, without the inherited simplepeer hacks
 
   peer.on(events.data, onData);
   peer.__earlyDataBuffer = [];
