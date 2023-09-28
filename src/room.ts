@@ -307,7 +307,6 @@ export default async (
 
 	const handleData = async (id: string, data: any) => {
 		const buffer = await (async () => {
-			// TODO: only unenc trans work, thinking there's a disconnect here
 			const payloadRaw = new Uint8Array(data);
 			if (encryptDecrypt && encryptDecrypt?.ecPeerlist()
 				.includes(id)) {

@@ -1,3 +1,5 @@
+# NOTE: this version has been altered nearly wholesale. It is not the original version, and does not function like it. YMMV.
+
 # 🤝 Trystero
 
 **Serverless WebRTC matchmaking for painless P2P: make any site multiplayer in a
@@ -77,7 +79,7 @@ Or maybe you prefer a simple script tag?
 
 ```html
 <script type="module">
-  import { joinRoom } from "https://cdn.skypack.dev/trystero";
+	import { joinRoom } from "https://cdn.skypack.dev/trystero";
 </script>
 ```
 
@@ -126,7 +128,7 @@ Listen for peers sending their audio/video streams:
 
 ```javascript
 room.onPeerStream(
-  (stream, peerId) => (peerElements[peerId].video.srcObject = stream)
+	(stream, peerId) => (peerElements[peerId].video.srcObject = stream)
 );
 ```
 
@@ -142,7 +144,7 @@ Send peers your video stream:
 
 ```javascript
 room.addStream(
-  await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
+	await navigator.mediaDevices.getUserMedia({ audio: true, video: true })
 );
 ```
 
@@ -159,9 +161,9 @@ sendDrink({ drink: "mezcal", withIce: false });
 
 // listen for drinks sent to you
 getDrink((data, peerId) =>
-  console.log(
-    `got a ${data.drink} with${data.withIce ? "" : "out"} ice from ${peerId}`
-  )
+	console.log(
+		`got a ${data.drink} with${data.withIce ? "" : "out"} ice from ${peerId}`
+	)
 );
 ```
 
@@ -176,7 +178,7 @@ canvas.toBlob((blob) => sendPic(blob));
 // binary data is received as raw ArrayBuffers so your handling code should
 // interpret it in a way that makes sense
 getPic(
-  (data, peerId) => (imgs[peerId].src = URL.createObjectURL(new Blob([data])))
+	(data, peerId) => (imgs[peerId].src = URL.createObjectURL(new Blob([data])))
 );
 ```
 
@@ -196,7 +198,7 @@ room.onPeerJoin((peerId) => sendName("Oedipa", peerId));
 getName((name, peerId) => (idsToNames[peerId] = name));
 
 room.onPeerLeave((peerId) =>
-  console.log(`${idsToNames[peerId] || "a weird stranger"} left`)
+	console.log(`${idsToNames[peerId] || "a weird stranger"} left`)
 );
 ```
 
@@ -215,8 +217,8 @@ const peerAudios = {};
 
 // get a local audio stream from the microphone
 const selfStream = await navigator.mediaDevices.getUserMedia({
-  audio: true,
-  video: false,
+	audio: true,
+	video: false
 });
 
 // send stream to peers currently in the room
@@ -227,14 +229,14 @@ room.onPeerJoin((peerId) => room.addStream(selfStream, peerId));
 
 // handle streams from other peers
 room.onPeerStream((stream, peerId) => {
-  // create an audio instance and set the incoming stream
-  const audio = new Audio();
-  audio.srcObject = stream;
-  audio.autoplay = true;
+	// create an audio instance and set the incoming stream
+	const audio = new Audio();
+	audio.srcObject = stream;
+	audio.autoplay = true;
 
-  // add the audio to peerAudio object if you want to address it for something
-  // later (volume, etc.)
-  peerAudios[peerId] = audio;
+	// add the audio to peerAudio object if you want to address it for something
+	// later (volume, etc.)
+	peerAudios[peerId] = audio;
 });
 ```
 
@@ -246,19 +248,19 @@ const peerVideos = {};
 const videoContainer = document.getElementById("videos");
 
 room.onPeerStream((stream, peerId) => {
-  let video = peerVideos[peerId];
+	let video = peerVideos[peerId];
 
-  // if this peer hasn't sent a stream before, create a video element
-  if (!video) {
-    video = document.createElement("video");
-    video.autoplay = true;
+	// if this peer hasn't sent a stream before, create a video element
+	if (!video) {
+		video = document.createElement("video");
+		video.autoplay = true;
 
-    // add video element to the DOM
-    videoContainer.appendChild(video);
-  }
+		// add video element to the DOM
+		videoContainer.appendChild(video);
+	}
 
-  video.srcObject = stream;
-  peerVideos[peerId] = video;
+	video.srcObject = stream;
+	peerVideos[peerId] = video;
 });
 ```
 
@@ -275,17 +277,17 @@ simply pass a metadata argument in the sender action for your binary payload:
 const [sendFile, getFile] = makeAction("file");
 
 getFile((data, peerId, metadata) =>
-  console.log(
-    `got a file (${metadata.name}) from ${peerId} with type ${metadata.type}`,
-    data
-  )
+	console.log(
+		`got a file (${metadata.name}) from ${peerId} with type ${metadata.type}`,
+		data
+	)
 );
 
 // to send metadata, pass a third argument
 // to broadcast to the whole room, set the second peer ID argument to null
 sendFile(buffer, null, {
-  name: "The Courierʼs Tragedy",
-  type: "application/pdf",
+	name: "The Courierʼs Tragedy",
+	type: "application/pdf"
 });
 ```
 
@@ -309,16 +311,16 @@ percentage value between 0 and 1 and the receiving peer's ID:
 
 ```javascript
 sendFile(
-  payload,
-  // notice the peer target argument for any action sender can be a single peer
-  // ID, an array of IDs, or null (meaning send to all peers in the room)
-  [peerIdA, peerIdB, peerIdC],
-  // metadata, which can also be null if you're only interested in the
-  // progress handler
-  { filename: "paranoids.flac" },
-  // assuming each peer has a loading bar added to the DOM, its value is
-  // updated here
-  (percent, peerId) => (loadingBars[peerId].value = percent)
+	payload,
+	// notice the peer target argument for any action sender can be a single peer
+	// ID, an array of IDs, or null (meaning send to all peers in the room)
+	[peerIdA, peerIdB, peerIdC],
+	// metadata, which can also be null if you're only interested in the
+	// progress handler
+	{ filename: "paranoids.flac" },
+	// assuming each peer has a loading bar added to the DOM, its value is
+	// updated here
+	(percent, peerId) => (loadingBars[peerId].value = percent)
 );
 ```
 
@@ -328,9 +330,9 @@ Similarly you can listen for progress events as a receiver like this:
 const [sendFile, getFile, onFileProgress] = room.makeAction("file");
 
 onFileProgress((percent, peerId, metadata) =>
-  console.log(
-    `${percent * 100}% done receiving ${metadata.filename} from ${peerId}`
-  )
+	console.log(
+		`${percent * 100}% done receiving ${metadata.filename} from ${peerId}`
+	)
 );
 ```
 
@@ -527,7 +529,7 @@ Returns an object with the following methods:
 
   ```javascript
   onPeerStream((stream, peerId) =>
-    console.log(`got stream from ${peerId}`, stream)
+  	console.log(`got stream from ${peerId}`, stream)
   );
   ```
 
@@ -545,7 +547,7 @@ Returns an object with the following methods:
 
   ```javascript
   onPeerTrack((track, stream, peerId) =>
-    console.log(`got track from ${peerId}`, track)
+  	console.log(`got track from ${peerId}`, track)
   );
   ```
 
@@ -618,13 +620,13 @@ Returns an object with the following methods:
   const [sendCursor, getCursor] = room.makeAction("cursormove");
 
   window.addEventListener("mousemove", (e) =>
-    sendCursor([e.clientX, e.clientY])
+  	sendCursor([e.clientX, e.clientY])
   );
 
   getCursor(([x, y], peerId) => {
-    const peerCursor = cursorMap[peerId];
-    peerCursor.style.left = x + "px";
-    peerCursor.style.top = y + "px";
+  	const peerCursor = cursorMap[peerId];
+  	peerCursor.style.left = x + "px";
+  	peerCursor.style.top = y + "px";
   });
   ```
 
@@ -640,10 +642,10 @@ Returns an object with the following methods:
   ```javascript
   // log round-trip time every 2 seconds
   room.onPeerJoin((peerId) =>
-    setInterval(
-      async () => console.log(`took ${await room.ping(peerId)}ms`),
-      2000
-    )
+  	setInterval(
+  		async () => console.log(`took ${await room.ping(peerId)}ms`),
+  		2000
+  	)
   );
   ```
 
@@ -717,18 +719,18 @@ If you want to use the Firebase strategy and don't have an existing project:
 
 ```json
 {
-  "rules": {
-    ".read": false,
-    ".write": false,
-    "__trystero__": {
-      ".read": false,
-      ".write": false,
-      "$room_id": {
-        ".read": true,
-        ".write": true
-      }
-    }
-  }
+	"rules": {
+		".read": false,
+		".write": false,
+		"__trystero__": {
+			".read": false,
+			".write": false,
+			"$room_id": {
+				".read": true,
+				".write": true
+			}
+		}
+	}
 }
 ```
 
