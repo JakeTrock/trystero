@@ -268,12 +268,14 @@ export default async (
 						}
 
 						if (forceEncryption) {
-							// TODO: reinstate, the above fallback is unsafe
-							if (encryptDecrypt && id in encryptDecrypt.ecPeerlist()) {
+							if (encryptDecrypt && encryptDecrypt?.ecPeerlist()
+								.includes(id)) {
 								const encChunk = await encryptDecrypt.encrypt(id, chunk);
+								console.log("enc", encChunk);
 								peer.send(encChunk);
 							} // fail if chunk cannot be encrypted
 						} else {
+							console.log("unenc", chunk);
 							peer.send(chunk);
 						}
 						chunkN++;
@@ -305,8 +307,10 @@ export default async (
 
 	const handleData = async (id: string, data: any) => {
 		const buffer = await (async () => {
+			// TODO: only unenc trans work, thinking there's a disconnect here
 			const payloadRaw = new Uint8Array(data);
-			if (encryptDecrypt && id in encryptDecrypt.ecPeerlist()) {
+			if (encryptDecrypt && encryptDecrypt?.ecPeerlist()
+				.includes(id)) {
 				const dec = await encryptDecrypt
 					.decrypt(id, payloadRaw)
 					.catch((error) => {
@@ -314,6 +318,7 @@ export default async (
 					});
 				return dec;
 			} else {
+				console.log("unenc", decodeBytes(payloadRaw));
 				return payloadRaw;
 			}
 		})();
@@ -328,12 +333,13 @@ export default async (
 		const isJson = Boolean(tag & (1 << 3));
 		const isFile = Boolean(tag & (1 << 4));
 		const payload = buffer.subarray(
-			encryptDecrypt && id in encryptDecrypt.ecPeerlist() && !isFile
+			encryptDecrypt && encryptDecrypt?.ecPeerlist()
+				.includes(id) && !isFile
 				? payloadIndex + 2
 				: payloadIndex,
 			buffer.length
 		);
-
+		console.log("actype", type);
 		console.log(decodeBytes(payload));
 
 		if (!actions[type]) {
