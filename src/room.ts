@@ -306,117 +306,121 @@ export default async (
 	};
 
 	const handleData = async (id: string, data: any) => {
-		const buffer = await (async () => {
-			const payloadRaw = new Uint8Array(data);
-			if (encryptDecrypt && encryptDecrypt?.ecPeerlist()
-				.includes(id)) {
-				const dec = await encryptDecrypt
-					.decrypt(id, payloadRaw)
-					.catch((error) => {
-						throw console.error(error);
-					});
-				return dec;
-			} else {
-				console.log("unenc", decodeBytes(payloadRaw));
-				return payloadRaw;
+		try {
+			const buffer = await (async () => {
+				const payloadRaw = new Uint8Array(data);
+				if (encryptDecrypt && encryptDecrypt?.ecPeerlist()
+					.includes(id)) {
+					const dec = await encryptDecrypt
+						.decrypt(id, payloadRaw)
+						.catch((error) => {
+							throw console.error(error);
+						});
+					return dec;
+				} else {
+					console.log("unenc", decodeBytes(payloadRaw));
+					return payloadRaw;
+				}
+			})();
+
+			const type = decodeBytes(buffer.subarray(typeIndex, nonceIndex));
+			const [nonce] = buffer.subarray(nonceIndex, tagIndex);
+			const [tag] = buffer.subarray(tagIndex, progressIndex);
+			const [progress] = buffer.subarray(progressIndex, payloadIndex);
+			const isLast = Boolean(tag & 1);
+			const isMeta = Boolean(tag & (1 << 1));
+			const isBinary = Boolean(tag & (1 << 2));
+			const isJson = Boolean(tag & (1 << 3));
+			const isFile = Boolean(tag & (1 << 4));
+			const payload = buffer.subarray(
+				encryptDecrypt && encryptDecrypt?.ecPeerlist()
+					.includes(id) && !isFile
+					? payloadIndex + 2
+					: payloadIndex,
+				buffer.length
+			);
+			console.log("actype", type);
+			console.log(decodeBytes(payload));
+
+			if (!actions[type]) {
+				throw mkErr(`received message with unregistered type (${type})`);
 			}
-		})();
 
-		const type = decodeBytes(buffer.subarray(typeIndex, nonceIndex));
-		const [nonce] = buffer.subarray(nonceIndex, tagIndex);
-		const [tag] = buffer.subarray(tagIndex, progressIndex);
-		const [progress] = buffer.subarray(progressIndex, payloadIndex);
-		const isLast = Boolean(tag & 1);
-		const isMeta = Boolean(tag & (1 << 1));
-		const isBinary = Boolean(tag & (1 << 2));
-		const isJson = Boolean(tag & (1 << 3));
-		const isFile = Boolean(tag & (1 << 4));
-		const payload = buffer.subarray(
-			encryptDecrypt && encryptDecrypt?.ecPeerlist()
-				.includes(id) && !isFile
-				? payloadIndex + 2
-				: payloadIndex,
-			buffer.length
-		);
-		console.log("actype", type);
-		console.log(decodeBytes(payload));
-
-		if (!actions[type]) {
-			throw mkErr(`received message with unregistered type (${type})`);
-		}
-
-		if (!pendingTransmissions[id]) {
-			pendingTransmissions[id] = {};
-		}
-
-		if (!pendingTransmissions[id][type]) {
-			pendingTransmissions[id][type] = {};
-		}
-
-		let target = pendingTransmissions[id][type][nonce];
-
-		if (!target) {
-			target = pendingTransmissions[id][type][nonce] = isFile
-				? {
-						fileWriter: undefined
-				  }
-				: { chunks: [] };
-		}
-
-		if (isMeta) {
-			target.meta = JSON.parse(decodeBytes(payload));
-			if (!target.fileWriter) {
-				const fileWriter = streamSaver
-					.createWriteStream(target.meta.name, {
-						size: target.meta.size // (optional filesize, default: undefined)
-					})
-					.getWriter();
-				// const fileHandle = await showSaveFilePicker({ //TODO: fixme later, the other approach has a 4g limit
-				//   suggestedName: target.meta.name,
-				//   _preferPolyfill: false,
-				//   excludeAcceptAllOption: false, // default
-				// });
-
-				// const fileWriter = await fileHandle.createWritable();
-				target.fileWriter = fileWriter;
+			if (!pendingTransmissions[id]) {
+				pendingTransmissions[id] = {};
 			}
-		} else {
-			if (isFile) {
-				if (target.fileWriter) {
-					await target.fileWriter.write(payload);
+
+			if (!pendingTransmissions[id][type]) {
+				pendingTransmissions[id][type] = {};
+			}
+
+			let target = pendingTransmissions[id][type][nonce];
+
+			if (!target) {
+				target = pendingTransmissions[id][type][nonce] = isFile
+					? {
+							fileWriter: undefined
+					  }
+					: { chunks: [] };
+			}
+
+			if (isMeta) {
+				target.meta = JSON.parse(decodeBytes(payload));
+				if (!target.fileWriter) {
+					const fileWriter = streamSaver
+						.createWriteStream(target.meta.name, {
+							size: target.meta.size // (optional filesize, default: undefined)
+						})
+						.getWriter();
+					// const fileHandle = await showSaveFilePicker({ //TODO: fixme later, the other approach has a 4g limit
+					//   suggestedName: target.meta.name,
+					//   _preferPolyfill: false,
+					//   excludeAcceptAllOption: false, // default
+					// });
+
+					// const fileWriter = await fileHandle.createWritable();
+					target.fileWriter = fileWriter;
 				}
 			} else {
-				target.chunks.push(payload);
+				if (isFile) {
+					if (target.fileWriter) {
+						await target.fileWriter.write(payload);
+					}
+				} else {
+					target.chunks.push(payload);
+				}
 			}
-		}
 
-		actions[type].onProgress(progress / oneByteMax, id, target.meta);
+			actions[type].onProgress(progress / oneByteMax, id, target.meta);
 
-		if (!isLast) {
-			return;
-		}
+			if (!isLast) {
+				return;
+			}
 
-		if (isFile) {
-			await target.fileWriter.close();
-			actions[type].onComplete({ success: true }, id, target.meta);
-		} else {
-			const full = combineChunks(target.chunks);
-
-			if (isBinary) {
-				actions[type].onComplete(full, id, target.meta);
+			if (isFile) {
+				await target.fileWriter.close();
+				actions[type].onComplete({ success: true }, id, target.meta);
 			} else {
-				const text = decodeBytes(full);
-				actions[type].onComplete(isJson ? JSON.parse(text) : text, id);
+				const full = combineChunks(target.chunks);
+
+				if (isBinary) {
+					actions[type].onComplete(full, id, target.meta);
+				} else {
+					const text = decodeBytes(full);
+					actions[type].onComplete(isJson ? JSON.parse(text) : text, id);
+				}
 			}
+			delete pendingTransmissions[id][type][nonce];
+		} catch (error) {
+			console.error(error);
 		}
-		delete pendingTransmissions[id][type][nonce];
 	};
 
-	const [sendPing, getPing] = makeAction("__91n6__");
-	const [sendPong, getPong] = makeAction("__90n6__");
-	const [sendSignal, getSignal] = makeAction("__516n4L__");
-	const [sendStreamMeta, getStreamMeta] = makeAction("__57r34m__");
-	const [sendTrackMeta, getTrackMeta] = makeAction("__7r4ck__");
+	const [sendPing, getPing] = makeAction("__91n6__", true);
+	const [sendPong, getPong] = makeAction("__90n6__", true);
+	const [sendSignal, getSignal] = makeAction("__516n4L__", true);
+	const [sendStreamMeta, getStreamMeta] = makeAction("__57r34m__", true);
+	const [sendTrackMeta, getTrackMeta] = makeAction("__7r4ck__", true);
 
 	let onPeerJoin: (arg0: string) => void = noOp;
 	let onPeerLeave: (arg0: string) => void = noOp;
@@ -503,27 +507,28 @@ export default async (
 			fromEntries(entries(peerMap)
 				.map(([id, peer]) => [id, peer._pc])),
 
-		addStream: (stream: MediaStream, targets: TargetPeers, meta: Metadata) =>
-			targets
-				? iterate(targets, async (id, peer) => {
-					if (meta) {
-						await sendStreamMeta(meta, id);
-					}
-
-					peer.addStream(stream);
-				  })
-				: [],
-
-		removeStream: (stream: MediaStream, targets: TargetPeers) =>
-			targets &&
-			iterate(
-				targets,
-				(_, peer) =>
-					new Promise((res) => {
-						peer.removeStream(stream);
-						res();
-					})
-			),
+		addStream: (stream: MediaStream, targets: TargetPeers, meta: Metadata) => {
+			const peerSendables = targets || keys(peerMap);
+			if (!peerSendables) return [];
+			return iterate(peerSendables, async (id, peer) => {
+				if (meta) {
+					await sendStreamMeta(meta, id);
+				}
+				peer.addStream(stream);
+			});
+		},
+		removeStream: (stream: MediaStream, targets: TargetPeers) => {
+			const peerSendables = targets || keys(peerMap);
+			peerSendables &&
+				iterate(
+					peerSendables,
+					(_, peer) =>
+						new Promise((res) => {
+							peer.removeStream(stream);
+							res();
+						})
+				);
+		},
 
 		addTrack: (
 			track: MediaStreamTrack,
