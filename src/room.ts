@@ -3,9 +3,10 @@
 import { SignalData } from "simple-peer";
 import streamSaver from "streamsaver";
 import {
+	ActionProgress,
+	ActionReceiver,
 	ActionSender,
 	ExtendedInstance,
-	MakeAction,
 	Metadata,
 	Room,
 	TargetPeers
@@ -23,7 +24,6 @@ import {
 	noOp
 } from "./utils.js";
 
-const TypedArray = Object.getPrototypeOf(Uint8Array);
 const typeByteLimit = 12;
 const typeIndex = 0;
 const nonceIndex = typeIndex + typeByteLimit;
@@ -92,7 +92,10 @@ export default async (
 		onPeerLeave(id);
 	};
 
-	const makeAction: MakeAction = (type: string, forceEncryption?: boolean) => {
+	const makeAction = <T>(
+		type: string,
+		forceEncryption?: boolean | undefined
+	) => {
 		if (!type) {
 			throw mkErr("action type argument is required");
 		}
@@ -119,7 +122,7 @@ export default async (
 
 		actions[typePadded] = { onComplete: noOp, onProgress: noOp };
 
-		const actionSender: ActionSender = async (
+		const actionSender: ActionSender<T> = async (
 			data,
 			targets,
 			meta,
@@ -129,9 +132,13 @@ export default async (
 				throw mkErr("action meta argument must be an object");
 			}
 
-			if (data === undefined) {
-				throw mkErr("action data cannot be undefined");
-			}
+			// if (data === undefined) {
+			// 	throw mkErr("action data cannot be undefined");
+			// }
+
+			// if (!data || Object.keys(data).length === 0) {
+			// 	throw mkErr("data is undefined");
+			// }
 
 			if (!targets) {
 				targets = keys(peerMap);
@@ -141,7 +148,7 @@ export default async (
 			const isFile = data instanceof File;
 			const isBlob = data instanceof Blob;
 			const isBinary =
-				isBlob || data instanceof ArrayBuffer || data instanceof TypedArray;
+				isBlob || data instanceof ArrayBuffer || data instanceof Uint8Array;
 
 			if (meta && !isBinary) {
 				throw mkErr("action meta argument can only be used with binary data");
@@ -232,13 +239,16 @@ export default async (
 							? chunkN * chunkSize
 							: (chunkN + 1) * chunkSize;
 
-						data
-							.slice(dataStart, dataEnd)
-							.arrayBuffer()
-							.then((buffer: ArrayBuffer) =>
-								res(formatChunk(new Uint8Array(buffer), chunkN, false))
-							)
-							.catch((error: Error) => rej(error));
+						if (data instanceof File) {
+							// silence TypeError
+							data
+								.slice(dataStart, dataEnd)
+								.arrayBuffer()
+								.then((buffer: ArrayBuffer) =>
+									res(formatChunk(new Uint8Array(buffer), chunkN, false))
+								)
+								.catch((error: Error) => rej(error));
+						}
 					}
 				});
 
@@ -292,7 +302,7 @@ export default async (
 			actionSender,
 
 			// functions are passed in and "registered" based on their type
-			(onComplete: (data: any, peerId: string, metadata?: Metadata) => void) =>
+			(onComplete) =>
 				(actions[typePadded] = { ...actions[typePadded], onComplete }),
 
 			(
@@ -302,7 +312,7 @@ export default async (
 					metadata?: Metadata
 				) => void
 			) => (actions[typePadded] = { ...actions[typePadded], onProgress })
-		];
+		] as [ActionSender<T>, ActionReceiver<T>, ActionProgress]; //
 	};
 
 	const handleData = async (id: string, data: any) => {
@@ -416,11 +426,14 @@ export default async (
 		}
 	};
 
-	const [sendPing, getPing] = makeAction("__91n6__", true);
-	const [sendPong, getPong] = makeAction("__90n6__", true);
-	const [sendSignal, getSignal] = makeAction("__516n4L__", true);
-	const [sendStreamMeta, getStreamMeta] = makeAction("__57r34m__", true);
-	const [sendTrackMeta, getTrackMeta] = makeAction("__7r4ck__", true);
+	const [sendPing, getPing] = makeAction<null>("__91n6__", true);
+	const [sendPong, getPong] = makeAction<null>("__90n6__", true);
+	const [sendSignal, getSignal] = makeAction<any>("__516n4L__", true);
+	const [sendStreamMeta, getStreamMeta] = makeAction<Metadata>(
+		"__57r34m__",
+		true
+	);
+	const [sendTrackMeta, getTrackMeta] = makeAction<Metadata>("__7r4ck__", true);
 
 	let onPeerJoin: (arg0: string) => void = noOp;
 	let onPeerLeave: (arg0: string) => void = noOp;

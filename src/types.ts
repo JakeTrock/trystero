@@ -34,19 +34,19 @@ export interface TorrentRoomConfig extends BaseRoomConfig {
 
 export type TargetPeers = string | string[] | undefined;
 
-export interface ActionSender {
+export interface ActionSender<T> {
 	// TODO: change to use <T> for data type
 	(
-		data: any,
+		data: T,
 		targetPeers?: TargetPeers,
 		metadata?: Metadata,
 		progress?: (percent: number, peerId: string, metadata?: Metadata) => void
-	): Promise<Array<any>>;
+	): Promise<void[]>;
 }
 
-export interface ActionReceiver {
+export interface ActionReceiver<T> {
 	// TODO: change to use <T> for data type
-	(receiver: (data: any, peerId: string, metadata?: Metadata) => void): void;
+	(receiver: (data: T, peerId: string, metadata?: Metadata) => void): void;
 }
 
 export interface ActionProgress {
@@ -59,14 +59,17 @@ export interface ActionProgress {
 	): void;
 }
 
-export type MakeAction = (
+export type MakeAction<T> = (
 	// TODO: change to use <T> for snd/rec
 	namespace: string,
 	forceEncryption?: boolean
-) => [ActionSender, ActionReceiver, ActionProgress];
+) => [ActionSender<T>, ActionReceiver<T>, ActionProgress];
 
 export interface Room {
-	makeAction: MakeAction;
+	makeAction: <T>(
+		namespace: string,
+		forceEncryption?: boolean
+	) => [ActionSender<T>, ActionReceiver<T>, ActionProgress];
 
 	ping: (id: string) => Promise<number>;
 
