@@ -2,6 +2,7 @@
 // TODO: codesplit this file
 import { SignalData } from "simple-peer";
 import streamSaver from "streamsaver";
+import { base64ToBytes, bytesToBase64 } from "./b64util.js";
 import {
 	ActionProgress,
 	ActionReceiver,
@@ -100,27 +101,13 @@ export default async (
 			throw mkErr("action type argument is required");
 		}
 
-		const typeEncoded = encodeBytes(type);
-
-		if (typeEncoded.byteLength > typeByteLimit) {
-			throw mkErr(
-				`action type string "${type}" (${typeEncoded.byteLength}b) exceeds ` +
-					`byte limit (${typeByteLimit}). Hint: choose a shorter name.`
-			);
-		}
-
-		const typeBytes = new Uint8Array(typeByteLimit);
-		typeBytes.set(typeEncoded);
-
-		const typePadded = decodeBytes(typeBytes);
-
-		if (actions[typePadded]) {
+		if (actions[type]) {
 			throw mkErr(`action '${type}' already registered`);
 		}
 
 		let nonce = 0;
 
-		actions[typePadded] = { onComplete: noOp, onProgress: noOp };
+		actions[type] = { onComplete: noOp, onProgress: noOp };
 
 		const actionSender: ActionSender<T> = async (
 			data,
@@ -178,39 +165,21 @@ export default async (
 				isMeta: boolean
 			) => {
 				const isLast = chkIndex === chunkTotal - 1;
-				const chunk = new Uint8Array(
-					payloadIndex +
-						(isMeta
-							? metaEncoded.byteLength
-							: (isLast
-									? buffer.byteLength
-									: chunkSize))
-				);
 
-				chunk.set(typeBytes);
-				chunk.set([nonce], nonceIndex);
-				chunk.set(
-					[
-						// @ts-ignore
-						isLast |
-							// @ts-ignore
-							(isMeta << 1) |
-							// @ts-ignore
-							(isBinary << 2) |
-							// @ts-ignore
-							(isJson << 3) |
-							// @ts-ignore
-							(isFile << 4)
-					],
-					tagIndex
-				);
-				chunk.set(
-					[Math.round(((chkIndex + 1) / chunkTotal) * oneByteMax)],
-					progressIndex
-				);
-				chunk.set(chkValue, payloadIndex);
-				console.log(decodeBytes(chunk));
-				return new Uint8Array(chunk);
+				const chkTmp = JSON.stringify({
+					// TODO: this works but is very slow, mustfix
+					typeBytes: type,
+					nonce,
+					isLast,
+					isMeta,
+					isBinary,
+					isJson,
+					isFile,
+					progress: [Math.round(((chkIndex + 1) / chunkTotal) * oneByteMax)],
+					payload: bytesToBase64(chkValue)
+				});
+
+				return encodeBytes(chkTmp);
 			};
 
 			const chunks =
@@ -283,11 +252,9 @@ export default async (
 							if (encryptDecrypt && encryptDecrypt?.ecPeerlist()
 								.includes(id)) {
 								const encChunk = await encryptDecrypt.encrypt(id, chunk);
-								console.log("enc", encChunk);
 								peer.send(encChunk);
 							} // fail if chunk cannot be encrypted
 						} else {
-							console.log("unenc", chunk);
 							peer.send(chunk);
 						}
 						chunkN++;
@@ -304,8 +271,7 @@ export default async (
 			actionSender,
 
 			// functions are passed in and "registered" based on their type
-			(onComplete) =>
-				(actions[typePadded] = { ...actions[typePadded], onComplete }),
+			(onComplete) => (actions[type] = { ...actions[type], onComplete }),
 
 			(
 				onProgress: (
@@ -313,7 +279,7 @@ export default async (
 					peerId: string,
 					metadata?: Metadata
 				) => void
-			) => (actions[typePadded] = { ...actions[typePadded], onProgress })
+			) => (actions[type] = { ...actions[type], onProgress })
 		] as [ActionSender<T>, ActionReceiver<T>, ActionProgress]; //
 	};
 
@@ -328,48 +294,41 @@ export default async (
 						.catch((error) => {
 							throw console.error(error);
 						});
-					return dec;
+					return JSON.parse(decodeBytes(dec));
 				} else {
-					console.log("unenc", decodeBytes(payloadRaw));
-					return payloadRaw;
+					return JSON.parse(decodeBytes(payloadRaw));
 				}
 			})();
 
-			const type = decodeBytes(buffer.subarray(typeIndex, nonceIndex));
-			const [nonce] = buffer.subarray(nonceIndex, tagIndex);
-			const [tag] = buffer.subarray(tagIndex, progressIndex);
-			const [progress] = buffer.subarray(progressIndex, payloadIndex);
-			const isLast = Boolean(tag & 1);
-			const isMeta = Boolean(tag & (1 << 1));
-			const isBinary = Boolean(tag & (1 << 2));
-			const isJson = Boolean(tag & (1 << 3));
-			const isFile = Boolean(tag & (1 << 4));
-			const payload = buffer.subarray(
-				encryptDecrypt && encryptDecrypt?.ecPeerlist()
-					.includes(id) && !isFile
-					? payloadIndex + 2
-					: payloadIndex,
-				buffer.length
-			);
-			console.log("actype", type);
-			console.log(decodeBytes(payload));
+			const {
+				typeBytes,
+				nonce,
+				isLast,
+				isMeta,
+				isBinary,
+				isJson,
+				isFile,
+				progress,
+				payload: plenc
+			} = buffer;
+			const payload = base64ToBytes(plenc);
 
-			if (!actions[type]) {
-				throw mkErr(`received message with unregistered type (${type})`);
+			if (!actions[typeBytes]) {
+				throw mkErr(`received message with unregistered type (${typeBytes})`);
 			}
 
 			if (!pendingTransmissions[id]) {
 				pendingTransmissions[id] = {};
 			}
 
-			if (!pendingTransmissions[id][type]) {
-				pendingTransmissions[id][type] = {};
+			if (!pendingTransmissions[id][typeBytes]) {
+				pendingTransmissions[id][typeBytes] = {};
 			}
 
-			let target = pendingTransmissions[id][type][nonce];
+			let target = pendingTransmissions[id][typeBytes][nonce];
 
 			if (!target) {
-				target = pendingTransmissions[id][type][nonce] = isFile
+				target = pendingTransmissions[id][typeBytes][nonce] = isFile
 					? {
 							fileWriter: undefined
 					  }
@@ -403,7 +362,7 @@ export default async (
 				}
 			}
 
-			actions[type].onProgress(progress / oneByteMax, id, target.meta);
+			actions[typeBytes].onProgress(progress / oneByteMax, id, target.meta);
 
 			if (!isLast) {
 				return;
@@ -411,18 +370,18 @@ export default async (
 
 			if (isFile) {
 				await target.fileWriter.close();
-				actions[type].onComplete({ success: true }, id, target.meta);
+				actions[typeBytes].onComplete({ success: true }, id, target.meta);
 			} else {
 				const full = combineChunks(target.chunks);
 
 				if (isBinary) {
-					actions[type].onComplete(full, id, target.meta);
+					actions[typeBytes].onComplete(full, id, target.meta);
 				} else {
 					const text = decodeBytes(full);
-					actions[type].onComplete(isJson ? JSON.parse(text) : text, id);
+					actions[typeBytes].onComplete(isJson ? JSON.parse(text) : text, id);
 				}
 			}
-			delete pendingTransmissions[id][type][nonce];
+			delete pendingTransmissions[id][typeBytes][nonce];
 		} catch (error) {
 			console.error(error);
 		}
