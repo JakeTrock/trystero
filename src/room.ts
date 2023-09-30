@@ -144,11 +144,12 @@ export default async (
 				targets = keys(peerMap);
 			}
 
-			const isJson = typeof data !== "string";
 			const isFile = data instanceof File;
 			const isBlob = data instanceof Blob;
 			const isBinary =
 				isBlob || data instanceof ArrayBuffer || data instanceof Uint8Array;
+			const isJson =
+				typeof data !== "string" && !isBinary && !isBlob && !isFile;
 
 			if (meta && !isBinary) {
 				throw mkErr("action meta argument can only be used with binary data");
@@ -160,6 +161,7 @@ export default async (
 				} else if (isBinary) {
 					return new Uint8Array(isBlob ? await data.arrayBuffer() : data);
 				} else {
+					// @ts-ignore
 					return encodeBytes(isJson ? JSON.stringify(data) : data);
 				}
 			})();
