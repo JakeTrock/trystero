@@ -175,7 +175,7 @@ export default async (
 					isBinary,
 					isJson,
 					isFile,
-					progress: [Math.round(((chkIndex + 1) / chunkTotal) * oneByteMax)],
+					progress: Math.round(((chkIndex + 1) / chunkTotal) * oneByteMax),
 					payload: bytesToBase64(chkValue)
 				});
 
