@@ -24,8 +24,7 @@
     "firebase": "^9.6.5",
     "native-file-system-adapter": "^3.0.0",
     "simple-peer": "^9.11.1",
-    "simple-peer-light": "^9.10.0",
-    "streamsaver": "^2.0.6"
+    "simple-peer-light": "^9.10.0"
   },
   "devDependencies": {
     "@rollup/plugin-commonjs": "^22.0.2",

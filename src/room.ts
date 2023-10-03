@@ -1,7 +1,7 @@
 /* eslint-disable max-lines-per-function */
 // TODO: codesplit this file
+import { showSaveFilePicker } from "native-file-system-adapter";
 import { SignalData } from "simple-peer";
-import streamSaver from "streamsaver";
 import { base64ToBytes, bytesToBase64 } from "./b64util.js";
 import {
 	ActionProgress,
@@ -338,18 +338,19 @@ export default async (
 			if (isMeta) {
 				target.meta = JSON.parse(decodeBytes(payload));
 				if (!target.fileWriter) {
-					const fileWriter = streamSaver
-						.createWriteStream(target.meta.name, {
-							size: target.meta.size // (optional filesize, default: undefined)
-						})
-						.getWriter();
-					// const fileHandle = await showSaveFilePicker({ //TODO: fixme later, the other approach has a 4g limit
-					//   suggestedName: target.meta.name,
-					//   _preferPolyfill: false,
-					//   excludeAcceptAllOption: false, // default
-					// });
+					// const fileWriter = streamSaver
+					// 	.createWriteStream(target.meta.name, {
+					// 		size: target.meta.size // (optional filesize, default: undefined)
+					// 	})
+					// 	.getWriter();
+					const fileHandle = await showSaveFilePicker({
+						// TODO: fixme later, the other approach has a 4g limit
+						suggestedName: target.meta.name,
+						_preferPolyfill: true,
+						excludeAcceptAllOption: false // default
+					});
 
-					// const fileWriter = await fileHandle.createWritable();
+					const fileWriter = await fileHandle.createWritable();
 					target.fileWriter = fileWriter;
 				}
 			} else {
