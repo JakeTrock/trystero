@@ -1,5 +1,6 @@
 /* eslint-disable max-lines-per-function */
 // TODO: codesplit this file
+// @ts-ignore
 import { showSaveFilePicker } from "native-file-system-adapter";
 import { SignalData } from "simple-peer";
 import { base64ToBytes, bytesToBase64 } from "./b64util.js";
