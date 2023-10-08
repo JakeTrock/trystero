@@ -261,7 +261,7 @@ export default async (
 						chunkN++;
 
 						if (onProgress) {
-							onProgress(chunk[progressIndex] / oneByteMax, id, meta);
+							onProgress(chunkN / chunkTotal, id, meta);
 						}
 					}
 				})
@@ -347,7 +347,7 @@ export default async (
 					const fileHandle = await showSaveFilePicker({
 						// TODO: fixme later, the other approach has a 4g limit
 						suggestedName: target.meta.name,
-						_preferPolyfill: true,
+						_preferPolyfill: false,
 						excludeAcceptAllOption: false // default
 					});
 
