@@ -26,13 +26,7 @@ import {
 	noOp
 } from "./utils.js";
 
-const typeByteLimit = 12;
-const typeIndex = 0;
-const nonceIndex = typeIndex + typeByteLimit;
-const tagIndex = nonceIndex + 1;
-const progressIndex = tagIndex + 1;
-const payloadIndex = progressIndex + 1;
-const chunkSize = 16 * 2 ** 10 - payloadIndex;
+const chunkSize = 128 * 2 ** 10;
 const oneByteMax = 0xFF;
 const buffLowEvent = "bufferedamountlow";
 
@@ -339,15 +333,9 @@ export default async (
 			if (isMeta) {
 				target.meta = JSON.parse(decodeBytes(payload));
 				if (!target.fileWriter) {
-					// const fileWriter = streamSaver
-					// 	.createWriteStream(target.meta.name, {
-					// 		size: target.meta.size // (optional filesize, default: undefined)
-					// 	})
-					// 	.getWriter();
 					const fileHandle = await showSaveFilePicker({
-						// TODO: fixme later, the other approach has a 4g limit
 						suggestedName: target.meta.name,
-						_preferPolyfill: false,
+						_preferPolyfill: true, // TODO: this needs to be removed, it has a download limitation, and it fails on close because of interactivity
 						excludeAcceptAllOption: false // default
 					});
 
@@ -371,8 +359,10 @@ export default async (
 			}
 
 			if (isFile) {
-				await target.fileWriter.close();
-				actions[typeBytes].onComplete({ success: true }, id, target.meta);
+				if (target.fileWriter) {
+					await target.fileWriter.close();
+					actions[typeBytes].onComplete({ success: true }, id, target.meta);
+				}
 			} else {
 				const full = combineChunks(target.chunks);
 
