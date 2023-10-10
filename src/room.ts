@@ -26,7 +26,13 @@ import {
 	noOp
 } from "./utils.js";
 
-const chunkSize = 128 * 2 ** 10; // 16 * 2 ** 10;
+const typeByteLimit = 12;
+const typeIndex = 0;
+const nonceIndex = typeIndex + typeByteLimit;
+const tagIndex = nonceIndex + 1;
+const progressIndex = tagIndex + 1;
+const payloadIndex = progressIndex + 1;
+const chunkSize = 16 * 2 ** 10 - payloadIndex;
 const oneByteMax = 0xFF;
 const buffLowEvent = "bufferedamountlow";
 
@@ -96,10 +102,6 @@ export default async (
 			throw mkErr("action type argument is required");
 		}
 
-		if (type.length > 16) {
-			throw mkErr("action type argument cannot be longer than 16 characters");
-		}
-
 		if (actions[type]) {
 			throw mkErr(`action '${type}' already registered`);
 		}
@@ -165,18 +167,6 @@ export default async (
 			) => {
 				const isLast = chkIndex === chunkTotal - 1;
 
-				// const fileType = (() => {  //TODO: monotype
-				// 	if (isFile) {
-				// 		return 0;
-				// 	} else if (isBinary) {
-				// 		return 1;
-				// 	} else if (isJson) {
-				// 		return 2;
-				// 	} else {
-				// 		return 3;
-				// 	}
-				// })();
-
 				const chkTmp = JSON.stringify({
 					// TODO: this works but is very slow, mustfix
 					typeBytes: type,
@@ -186,11 +176,11 @@ export default async (
 					isBinary,
 					isJson,
 					isFile,
-					// fileType,
-					progress: Math.round(((chkIndex + 1) / chunkTotal) * oneByteMax)
+					progress: Math.round(((chkIndex + 1) / chunkTotal) * oneByteMax),
+					payload: bytesToBase64(chkValue)
 				});
 
-				return encodeBytes(`${chkTmp}${bytesToBase64(chkValue)}`);
+				return encodeBytes(chkTmp);
 			};
 
 			const chunks =
@@ -305,13 +295,11 @@ export default async (
 						.catch((error) => {
 							throw console.error(error);
 						});
-					return decodeBytes(dec);
+					return JSON.parse(decodeBytes(dec));
 				} else {
-					return decodeBytes(payloadRaw);
+					return JSON.parse(decodeBytes(payloadRaw));
 				}
 			})();
-
-			const splitpoint = buffer.lastIndexOf("}") + 1;
 
 			const {
 				typeBytes,
@@ -321,9 +309,10 @@ export default async (
 				isBinary,
 				isJson,
 				isFile,
-				progress
-			} = JSON.parse(buffer.slice(0, splitpoint));
-			const payload = base64ToBytes(buffer.slice(splitpoint));
+				progress,
+				payload: plenc
+			} = buffer;
+			const payload = base64ToBytes(plenc);
 
 			if (!actions[typeBytes]) {
 				throw mkErr(`received message with unregistered type (${typeBytes})`);
