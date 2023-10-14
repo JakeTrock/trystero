@@ -1,7 +1,5 @@
 /* eslint-disable max-lines-per-function */
 // TODO: codesplit this file
-// @ts-ignore
-import { showSaveFilePicker } from "native-file-system-adapter";
 import { SignalData } from "simple-peer";
 import { base64ToBytes, bytesToBase64 } from "./b64util.js";
 import {
@@ -126,32 +124,21 @@ export default async (
 				targets = keys(peerMap);
 			}
 
-			const isFile = data instanceof File;
 			const isBlob = data instanceof Blob;
 			const isBinary =
 				isBlob || data instanceof ArrayBuffer || data instanceof Uint8Array;
-			const isJson =
-				typeof data !== "string" && !isBinary && !isBlob && !isFile;
+			const isJson = typeof data !== "string" && !isBinary && !isBlob;
 
 			if (meta && !isBinary) {
 				throw mkErr("action meta argument can only be used with binary data");
 			}
 
-			const buffer = await (async () => {
-				if (isFile) {
-					return encodeBytes(""); // we do not want to buffer the file, it is too large
-				} else if (isBinary) {
-					return new Uint8Array(isBlob ? await data.arrayBuffer() : data);
-				} else {
-					// @ts-ignore
-					return encodeBytes(isJson ? JSON.stringify(data) : data);
-				}
-			})();
+			const buffer = isBinary
+				? new Uint8Array(isBlob ? await data.arrayBuffer() : data)
+				: encodeBytes(isJson ? JSON.stringify(data) : (data as string));
 
 			const chunkTotal =
-				(isFile
-					? Math.ceil(data.size / chunkSize) + (meta ? 1 : 0)
-					: Math.ceil(buffer.byteLength / chunkSize)) + (meta ? 1 : 0);
+				Math.ceil(buffer.byteLength / chunkSize) + (meta ? 1 : 0);
 
 			const metaEncoded = encodeBytes(JSON.stringify(meta));
 			const formatChunk = (
@@ -162,14 +149,12 @@ export default async (
 				const isLast = chkIndex === chunkTotal - 1;
 
 				const chkTmp = JSON.stringify({
-					// TODO: this works but is very slow, mustfix
 					typeBytes: type,
 					nonce,
 					isLast,
 					isMeta,
 					isBinary,
 					isJson,
-					isFile,
 					progress: Math.round(((chkIndex + 1) / chunkTotal) * oneByteMax),
 					payload: bytesToBase64(chkValue)
 				});
@@ -177,56 +162,28 @@ export default async (
 				return encodeBytes(chkTmp);
 			};
 
-			const chunks =
-				!isFile &&
-				Array.from({ length: chunkTotal })
-					.fill(new Uint8Array(chunkSize))
-					.map((_, i) => {
-						return Boolean(meta) && i === 0
-							? formatChunk(metaEncoded, i, true)
-							: formatChunk(
-								meta
-									? buffer.subarray((i - 1) * chunkSize, i * chunkSize)
-									: buffer.subarray(i * chunkSize, (i + 1) * chunkSize),
-								i,
-								false
-							  );
-					});
-
-			const getFileChunk = (chunkN: number) =>
-				new Promise<Uint8Array>((res, rej) => {
-					if (Boolean(meta) && chunkN === 0) {
-						res(formatChunk(metaEncoded, chunkN, true));
-					} else {
-						const dataStart = meta
-							? (chunkN - 1) * chunkSize
-							: chunkN * chunkSize;
-						const dataEnd = meta
-							? chunkN * chunkSize
-							: (chunkN + 1) * chunkSize;
-
-						if (data instanceof File) {
-							// silence TypeError
-							data
-								.slice(dataStart, dataEnd)
-								.arrayBuffer()
-								.then((buffer: ArrayBuffer) =>
-									res(formatChunk(new Uint8Array(buffer), chunkN, false))
-								)
-								.catch((error: Error) => rej(error));
-						}
-					}
+			const chunks = Array.from({ length: chunkTotal })
+				.fill(new Uint8Array(chunkSize))
+				.map((_, i) => {
+					return Boolean(meta) && i === 0
+						? formatChunk(metaEncoded, i, true)
+						: formatChunk(
+							meta
+								? buffer.subarray((i - 1) * chunkSize, i * chunkSize)
+								: buffer.subarray(i * chunkSize, (i + 1) * chunkSize),
+							i,
+							false
+						  );
 				});
 
 			nonce = (nonce + 1) & oneByteMax;
-
 			return Promise.all(
 				iterate(targets, async (id, peer) => {
 					const chan = peer._channel;
 					let chunkN = 0;
 
 					while (chunkN < chunkTotal) {
-						const chunk = chunks ? chunks[chunkN] : await getFileChunk(chunkN);
+						const chunk = chunks[chunkN];
 
 						if (chan.bufferedAmount > chan.bufferedAmountLowThreshold) {
 							await new Promise<void>((res) => {
@@ -302,7 +259,6 @@ export default async (
 				isMeta,
 				isBinary,
 				isJson,
-				isFile,
 				progress,
 				payload: plenc
 			} = buffer;
@@ -323,33 +279,13 @@ export default async (
 			let target = pendingTransmissions[id][typeBytes][nonce];
 
 			if (!target) {
-				target = pendingTransmissions[id][typeBytes][nonce] = isFile
-					? {
-							fileWriter: undefined
-					  }
-					: { chunks: [] };
+				target = pendingTransmissions[id][typeBytes][nonce] = { chunks: [] };
 			}
 
 			if (isMeta) {
 				target.meta = JSON.parse(decodeBytes(payload));
-				if (!target.fileWriter) {
-					const fileHandle = await showSaveFilePicker({
-						suggestedName: target.meta.name,
-						_preferPolyfill: true, // TODO: this needs to be removed, it has a download limitation, and it fails on close because of interactivity
-						excludeAcceptAllOption: false // default
-					});
-
-					const fileWriter = await fileHandle.createWritable();
-					target.fileWriter = fileWriter;
-				}
 			} else {
-				if (isFile) {
-					if (target.fileWriter) {
-						await target.fileWriter.write(payload);
-					}
-				} else {
-					target.chunks.push(payload);
-				}
+				target.chunks.push(payload);
 			}
 
 			actions[typeBytes].onProgress(progress / oneByteMax, id, target.meta);
@@ -358,21 +294,15 @@ export default async (
 				return;
 			}
 
-			if (isFile) {
-				if (target.fileWriter) {
-					await target.fileWriter.close();
-					actions[typeBytes].onComplete({ success: true }, id, target.meta);
-				}
-			} else {
-				const full = combineChunks(target.chunks);
+			const full = combineChunks(target.chunks);
 
-				if (isBinary) {
-					actions[typeBytes].onComplete(full, id, target.meta);
-				} else {
-					const text = decodeBytes(full);
-					actions[typeBytes].onComplete(isJson ? JSON.parse(text) : text, id);
-				}
+			if (isBinary) {
+				actions[typeBytes].onComplete(full, id, target.meta);
+			} else {
+				const text = decodeBytes(full);
+				actions[typeBytes].onComplete(isJson ? JSON.parse(text) : text, id);
 			}
+
 			delete pendingTransmissions[id][typeBytes][nonce];
 		} catch (error) {
 			console.error(error);
