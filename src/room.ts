@@ -26,7 +26,6 @@ import {
 
 const chunkSize = 128 * 2 ** 10;
 const oneByteMax = 0xFF;
-const buffLowEvent = "bufferedamountlow";
 
 export default async (
 	onPeer: (joinHook: (peer: ExtendedInstance, id: string) => void) => void,
@@ -162,20 +161,6 @@ export default async (
 				return encodeBytes(chkTmp);
 			};
 
-			const chunks = Array.from({ length: chunkTotal })
-				.fill(new Uint8Array(chunkSize))
-				.map((_, i) => {
-					return Boolean(meta) && i === 0
-						? formatChunk(metaEncoded, i, true)
-						: formatChunk(
-							meta
-								? buffer.subarray((i - 1) * chunkSize, i * chunkSize)
-								: buffer.subarray(i * chunkSize, (i + 1) * chunkSize),
-							i,
-							false
-						  );
-				});
-
 			nonce = (nonce + 1) & oneByteMax;
 			return Promise.all(
 				iterate(targets, async (id, peer) => {
@@ -183,16 +168,38 @@ export default async (
 					let chunkN = 0;
 
 					while (chunkN < chunkTotal) {
-						const chunk = chunks[chunkN];
+						const chunk = (() => {
+							if (chunkN === 0 && meta) {
+								return formatChunk(metaEncoded, chunkN, true);
+							} else {
+								return meta
+									? formatChunk(
+										buffer.subarray(
+											(chunkN - 1) * chunkSize,
+											chunkN * chunkSize
+										),
+										chunkN,
+										false
+									  )
+									: formatChunk(
+										buffer.subarray(
+											chunkN * chunkSize,
+											(chunkN + 1) * chunkSize
+										),
+										chunkN,
+										false
+									  );
+							}
+						})();
 
 						if (chan.bufferedAmount > chan.bufferedAmountLowThreshold) {
 							await new Promise<void>((res) => {
 								const next = () => {
-									chan.removeEventListener(buffLowEvent, next);
+									chan.removeEventListener("bufferedamountlow", next);
 									res();
 								};
 
-								chan.addEventListener(buffLowEvent, next);
+								chan.addEventListener("bufferedamountlow", next);
 							});
 						}
 
