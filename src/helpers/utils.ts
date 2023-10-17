@@ -134,3 +134,24 @@ export const combineChunks = (chunks: any[]) => {
 
 	return full;
 };
+
+export const iterate = (
+	peerMap: { [s: string]: ExtendedInstance },
+	targets: string[] | string,
+	f: (id: string, peer: ExtendedInstance) => Promise<void>
+) =>
+	(targets
+		? (Array.isArray(targets)
+				? targets
+				: [targets])
+		: keys(peerMap)
+	).flatMap((id) => {
+		const peer = peerMap[id];
+
+		if (!peer) {
+			console.warn(`${libName}: no peer with id ${id} found`);
+			return [];
+		}
+
+		return f(id, peer);
+	});

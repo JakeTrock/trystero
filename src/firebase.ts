@@ -13,9 +13,8 @@ import {
 	set,
 	Unsubscribe
 } from "firebase/database";
-import { decrypt, encrypt, genKey } from "./crypto";
-import room from "./room";
-import { ExtendedInstance, FirebaseRoomConfig } from "./types";
+import { decrypt, encrypt, genKey } from "./helpers/crypto.js";
+import { ExtendedInstance, FirebaseRoomConfig } from "./helpers/types.js";
 import {
 	events,
 	firebaseGuard,
@@ -25,7 +24,8 @@ import {
 	libName,
 	noOp,
 	selfId
-} from "./utils";
+} from "./helpers/utils.js";
+import room from "./roomManagement/room.js";
 
 const presencePath = "_";
 const defaultRootPath = `__${libName.toLowerCase()}__`;
@@ -193,4 +193,4 @@ export const getOccupants = firebaseGuard(
 		)
 );
 
-export { selfId } from "./utils.js";
+export { selfId } from "./helpers/utils.js";

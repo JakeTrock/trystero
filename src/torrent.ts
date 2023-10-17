@@ -1,8 +1,7 @@
 /* eslint-disable max-lines-per-function */
 // TODO: codesplitting
-import { decrypt, encrypt, genKey } from "./crypto";
-import room from "./room";
-import { ExtendedInstance, TorrentRoomConfig } from "./types";
+import { decrypt, encrypt, genKey } from "./helpers/crypto.js";
+import { ExtendedInstance, TorrentRoomConfig } from "./helpers/types.js";
 import {
 	encodeBytes,
 	entries,
@@ -15,7 +14,8 @@ import {
 	noOp,
 	selfId,
 	values
-} from "./utils";
+} from "./helpers/utils.js";
+import room from "./roomManagement/room.js";
 
 const occupiedRooms: { [x: string]: any } = {};
 const sockets: { [x: string]: any } = {};
@@ -339,4 +339,4 @@ export const joinRoom = initGuard(
 	}
 );
 
-export { selfId } from "./utils.js";
+export { selfId } from "./helpers/utils.js";

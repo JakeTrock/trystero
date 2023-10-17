@@ -110,6 +110,8 @@ export interface Room {
 
 	onPeerLeave: (fn: (peerId: string) => void) => void;
 
+	onPeerError: (fn: (peerId: string, error: any) => void) => void;
+
 	onPeerStream: (
 		fn: (stream: MediaStream, peerId: string, metadata: Metadata) => void
 	) => void;
@@ -125,3 +127,18 @@ export interface ExtendedInstance extends Instance {
 	__drainEarlyData: (onData: (data: any) => void) => void;
 	_pc: RTCPeerConnection;
 }
+
+export type EncryptDecryptObj =
+	| {
+			encrypt: (toId: string, data: Uint8Array) => Promise<Uint8Array>;
+			decrypt: (fromId: string, data: Uint8Array) => Promise<Uint8Array>;
+			ecPeerlist: () => string[];
+	  }
+	| undefined;
+
+export type ActionsType = {
+	[x: string]: {
+		onComplete: (data: any, peerId: string, metadata?: Metadata) => void;
+		onProgress: (percent: number, peerId: string, metadata?: Metadata) => void;
+	};
+};
