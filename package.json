@@ -21,19 +21,19 @@
   },
   "license": "MIT",
   "dependencies": {
-    "firebase": "^9.6.5",
-    "native-file-system-adapter": "^3.0.0",
+    "firebase": "^10.5.0",
     "simple-peer": "^9.11.1",
     "simple-peer-light": "^9.10.0"
   },
   "devDependencies": {
-    "@rollup/plugin-commonjs": "^22.0.2",
-    "@rollup/plugin-node-resolve": "^14.0.1",
-    "@types/simple-peer": "^9.11.5",
-    "rollup": "^2.79.0",
-    "terser": "^5.15.0"
+    "@rollup/plugin-commonjs": "^25.0.7",
+    "@rollup/plugin-node-resolve": "^15.2.3",
+    "@types/simple-peer": "^9.11.6",
+    "rollup": "^4.1.4",
+    "terser": "^5.22.0"
   },
   "scripts": {
     "sizes": "./bundle-sizes.sh"
-  }
+  },
+  "packageManager": "yarn@3.6.4"
 }
